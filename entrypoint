@@ -21,7 +21,7 @@ _log() {
     local logfile=/var/log/mail.log
     if [ ! -f $logfile ]; then
         touch $logfile
-        chown syslog:adm $logfile
+        #chown syslog:adm $logfile
         chmod 640 $logfile
     fi
     echo "$(date '+%b %e %H:%I:%S') $(hostname) entrypoint[$$]: $1" >> $logfile
@@ -29,7 +29,7 @@ _log() {
 
 _stop() {
     /etc/init.d/postfix stop
-    /etc/init.d/rsyslog stop
+    /etc/init.d/inetutils-syslogd stop
     if [ -f /var/run/dovecot/master.pid ]; then
         kill -15 $(cat /var/run/dovecot/master.pid)
         rm -rf /var/run/dovecot/master.pid
@@ -111,10 +111,16 @@ fi
 /usr/sbin/postconf -e virtual_mailbox_maps=hash:/etc/postfix/vmailbox
 /usr/sbin/postconf compatibility_level=2
 
-# Create user account
-if [ -n "$MAIL_ADDRESS" ]; then
-    _account_add "$MAIL_ADDRESS" "$MAIL_PASS"
-    _add_line "$MAIL_ADDRESS" "/$MAIL_ADDRESS/ $MAIL_ADDRESS" /etc/postfix/virtual_regexp
+# Create user accounts
+if [ -n "$MAIL_ACCOUNTS" ]; then
+    IFS=";" read -a myarray <<< $MAIL_ACCOUNTS
+    for MAIL_ACCOUNT in ${myarray[@]}; do
+        IFS=',' read account_login account_password <<< ${MAIL_ACCOUNT}
+        echo $account_login
+        echo $account_password
+        _account_add "$account_login" "$account_password"
+        _add_line "$account_login" "/$account_login/ $account_login" /etc/postfix/virtual_regexp
+    done
 fi
 
 # Create debug account
@@ -138,7 +144,9 @@ sed -i -e 's/^.*postmaster_address.*/  postmaster_address = '${POSTMASTER_ADDRES
 _log "Docker entrypoint configured"
 
 # Start syslog daemon
-/etc/init.d/rsyslog start
+# systemctl enable rsyslog.service
+# service rsyslog restart
+ /etc/init.d/inetutils-syslogd start
 
 # Start Postfix daemon
 /etc/init.d/postfix start
